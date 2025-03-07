@@ -1,0 +1,14 @@
+<mujoco>
+  <default class="main">
+    <geom rgba="1 0 0 1"/>
+    <default class="sub">
+      <geom rgba="0 1 0 1" group="5" contype="0" conaffinity="0"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <body name="main_body">
+      <geom type="box" size="0.02 0.02 0.02" pos="0 0 0"/>
+    </body>
+  </worldbody>
+</mujoco>

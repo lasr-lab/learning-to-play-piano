@@ -1,0 +1,39 @@
+name: pianist_9
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - _libgcc_mutex=0.1
+  - _openmp_mutex=5.1
+  - ca-certificates=2024.7.2
+  - ld_impl_linux-64=2.38
+  - libffi=3.4.4
+  - libgcc-ng=11.2.0
+  - libgomp=11.2.0
+  - libstdcxx-ng=11.2.0
+  - ncurses=6.4
+  - openssl=3.0.14
+  - pip=24.2
+  - python=3.9.19
+  - readline=8.2
+  - setuptools=72.1.0
+  - sqlite=3.45.3
+  - tk=8.6.14
+  - tzdata=2024a
+  - wheel=0.43.0
+  - xz=5.4.6
+  - zlib=1.2.13
+  - ros-sensor-msgs
+  - pip:
+      - jax[cuda12_pip]==0.4.30
+      - jaxlib==0.4.30
+      - flax==0.8.4
+      - tyro
+      - wandb
+      - dm_env_wrappers
+      - optax
+      - distrax
+      - alsa-midi
+      - robopianist
+      - matplotlib
+      - numpy==1.26.4
