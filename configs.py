@@ -1,14 +1,16 @@
+import copy
 import dataclasses
+import enum
 import json
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple, Sequence, Type, Dict
+from typing import Optional, Tuple, Sequence, Type
 
 import tyro
 
 from robopianist.models.arm.robot_arm import RobotArm
-from robopianist.models.hands import AllegroHand, ShadowHand, Hand
+from robopianist.models.hands import AllegroHand, ShadowHand, Hand, HandSide, allegro_hand_constants
 from robopianist.models.piano.piano_constants import PianoType
 
 
@@ -26,18 +28,26 @@ class Randomization:
 
     @staticmethod
     def get_randomization(intensity):
-        return DRConfig(piano_pos_offset=Randomization.get_intermediate_value(0, 0.0085, intensity),
-                        hand_pos_offset=Randomization.get_intermediate_value(0, 0.33, intensity),
-                        damping_offset=Randomization.get_intermediate_value(0, 0.9, intensity),
-                        activation_offset=Randomization.get_intermediate_tuple((0.75, 0.75), (0.1, 0.9),
-                                                                               intensity),
-                        key_stiffness=Randomization.get_intermediate_tuple((1.0, 1.0), (0.3, 2.3), intensity),
-                        sliding_friction=Randomization.get_intermediate_tuple((1.0, 1.0), (0.2, 2.5), intensity))
+        return DRConfig(
+            piano_pos_offset=Randomization.get_intermediate_value(0, 0.01, intensity),  # 1cm
+            hand_pos_offset=Randomization.get_intermediate_value(0, 0.03, intensity),  # 3cm
+            activation_offset_range=Randomization.get_intermediate_tuple((0.75, 0.75), (0.1, 0.9), intensity),
+            key_stiffness_range=Randomization.get_intermediate_tuple((1.0, 1.0), (0.3, 2.3), intensity),
+            sliding_friction_range=Randomization.get_intermediate_tuple((1.0, 1.0), (0.2, 2.5), intensity),
+            gain_offset=Randomization.get_intermediate_value(0, 0.4, intensity),
+        )
 
 
 class PrintableConfig:
     def prettyprint(self):
-        return print(json.dumps(dataclasses.asdict(self), indent=4))
+        def default(obj):
+            if isinstance(obj, enum.Enum):
+                return obj.value
+            if isinstance(obj, Path):
+                return str(obj)
+            return str(obj)
+
+        return print(json.dumps(dataclasses.asdict(self), indent=4, default=default))
 
 
 @dataclass(frozen=False)
@@ -59,40 +69,31 @@ class SACConfig(PrintableConfig):
 
 
 @dataclass(frozen=False)
-class JointConfig(PrintableConfig):
-    stiffness: float
-    damping: float
+class DRConfig(PrintableConfig):
+    piano_pos_offset: float
+    hand_pos_offset: float
+    activation_offset_range: Tuple[float, float]
+    key_stiffness_range: Tuple[float, float]
+    sliding_friction_range: Tuple[float, float]
+    gain_offset: float
+
+
+def dict_to_field(params: dict):
+    return dataclasses.field(default_factory=lambda: copy.deepcopy(params))
 
 
 @dataclass(frozen=False)
-class DRConfig(PrintableConfig):
-    piano_pos_offset: float = 0.004
-    hand_pos_offset: float = 0.05
-    activation_offset: Tuple[float, float] = (0.35, 0.75)
-    key_stiffness: Tuple[float, float] = (0.5, 2.0)
-    sliding_friction: Tuple[float, float] = (0.7, 1.3)
-    hand_configuration: Dict[str, JointConfig] = dataclasses.field(default_factory=lambda: {
-        'ffa0': JointConfig(stiffness=1, damping=0.1),
-        'ffa1': JointConfig(stiffness=1, damping=0.1),
-        'ffa2': JointConfig(stiffness=1, damping=0.1),
-        'ffa3': JointConfig(stiffness=1, damping=0.1),
-        'mfa0': JointConfig(stiffness=1, damping=0.1),
-        'mfa1': JointConfig(stiffness=1, damping=0.1),
-        'mfa2': JointConfig(stiffness=1, damping=0.1),
-        'mfa3': JointConfig(stiffness=1, damping=0.1),
-        'rfa0': JointConfig(stiffness=1, damping=0.1),
-        'rfa1': JointConfig(stiffness=1, damping=0.1),
-        'rfa2': JointConfig(stiffness=1, damping=0.1),
-        'rfa3': JointConfig(stiffness=1, damping=0.1),
-        'forearm_tx': JointConfig(stiffness=12_000, damping=6929.213901443674),
-    })
-    damping_offset: float = 0.0
+class AllegroHandParams(PrintableConfig):
+    damping: dict = dict_to_field(allegro_hand_constants.DAMPING)
+    kp: dict = dict_to_field(allegro_hand_constants.KP)
+    kd: dict = dict_to_field(allegro_hand_constants.KD)
+    sluggish: dict = dict_to_field(allegro_hand_constants.SLUGGISH)
+    max_u: dict = dict_to_field(allegro_hand_constants.MAX_U)
 
 
 @dataclass(frozen=False)
 class Defaults(PrintableConfig):
     intensity: float = 0.0
-
     root_dir: str = "/tmp/robopianist/rl/"
     seed: int = 43
     max_steps: int = 5_000_000
@@ -105,7 +106,7 @@ class Defaults(PrintableConfig):
     tqdm_bar: bool = False
     replay_capacity: int = 1_000_000
     project: str = "robopianist"
-    entity: str = ""
+    entity: str = "iamtypingsomethingrandom"
     name: str = ""
     run_id: str = "default"
     tags: str = ""
@@ -125,6 +126,7 @@ class Defaults(PrintableConfig):
     energy_penalty_coef: float = 5e-3
     action_penalty_coef: float = 0.1
     sliding_penalty_coef: float = 0.1
+    optimal_transport_coef: float = -5.0
     disable_colorization: bool = False
     disable_hand_collisions: bool = False
     primitive_fingertip_collisions: bool = True
@@ -134,24 +136,29 @@ class Defaults(PrintableConfig):
     record_every: int = 1
     record_resolution: Tuple[int, int] = (480, 640)
     camera_id: Optional[str] = "piano/arm"
+    create_video_flag: bool = True
     action_reward_observation: bool = False
     agent_config: SACConfig = SACConfig()
     robot_hand: str = "RobotArm"
-    randomization_config: DRConfig = Randomization.get_randomization(intensity)
     use_action_curriculum: bool = False
     forearm_dofs: Sequence[str] = ("forearm_tx",)
     attachment_yaw: float = 0.0
-    use_both_hands: bool = False
     piano_type: str = PianoType.M_AUDIO_KEYSTATION_49E.value
     start_model_upload: int = 900_000
     action_noise: float = 0.0
-    excluded_dofs: Tuple[str, ...] = (
+    excluded_dofs: Tuple[str] = (
         "tha0",
         "tha1",
         "tha2",
         "tha3"
     )
-    model_url: str = None
+    model_url: Optional[str] = None
+    hand_side: HandSide = HandSide.RIGHT
+    use_both_hands: bool = False
+    historical_stack_size: int = 1
+    n_recurring_nodes: int = 0
+    initial_buffer_time: float = 1.0
+    hand_params: AllegroHandParams = AllegroHandParams()
 
     def get_hand_class(self) -> Type[Hand]:
         if self.robot_hand == "allegro":
@@ -163,9 +170,6 @@ class Defaults(PrintableConfig):
 
     def get_piano_type(self) -> PianoType:
         return PianoType(self.piano_type)
-
-    def __post_init__(self):
-        self.randomization_config: DRConfig = Randomization.get_randomization(self.intensity)
 
 
 @dataclass(frozen=False)
@@ -216,9 +220,24 @@ class RealisticEnvConfig(AllegroConfig):
 
     name: str = f"Reproduce {random.randint(0, 2 ** 16)}"
     run_id: str = name
+    historical_stack_size: int = 5
 
 
-SELECTED_CLASS = RealisticEnvConfig
+@dataclass(frozen=False)
+class PDTraining(RealisticEnvConfig):
+    max_steps: int = 4_000_000
+    start_model_upload: int = 2_500_000
+    gravity_compensation: bool = False
+    historical_stack_size: int = 2
+    action_noise: float = 0.0
+    reward_functions: Sequence[str] = (
+        "optimal_transport_reward", "keypress_reward", "energy_reward", "action_reward", "unwanted_collision_penalty"
+    )
+    intensity: float = 0.15
+    optimal_transport_coef: float = -10.0
+
+
+SELECTED_CLASS = PDTraining
 
 
 def get_config() -> Defaults:

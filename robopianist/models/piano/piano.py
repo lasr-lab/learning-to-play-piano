@@ -73,14 +73,14 @@ class Piano(composer.Entity):
         return PianoObservables(self)
 
     def _parse_mjcf_elements(self) -> None:
-        keys = mjcf_utils.safe_find_all(self._mjcf_root, "body")
-        keys = keys[1:]  # Remove the base body.
+        bodies = mjcf_utils.safe_find_all(self._mjcf_root, "body")
+        keys = [b for b in bodies if "key" in b.name]
         # Sort by increasing key number.
         sorted_idxs = np.argsort([int(key.name.split("_")[-1]) for key in keys])
         self._keys = tuple([keys[idx] for idx in sorted_idxs])
 
-        key_geoms = mjcf_utils.safe_find_all(self._mjcf_root, "geom")
-        key_geoms = key_geoms[1:]  # Remove the base geom.
+        geoms = mjcf_utils.safe_find_all(self._mjcf_root, "geom")
+        key_geoms = [g for g in geoms if "key" in g.parent.name]
         self._key_geoms = tuple([key_geoms[idx] for idx in sorted_idxs])
 
         joints = mjcf_utils.safe_find_all(self._mjcf_root, "joint")

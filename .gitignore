@@ -16,3 +16,8 @@ test/
 *.log
 *.err
 *.out
+/third_party/
+/data/evaluate_dr/
+/data/debug/
+/plots/out/
+/data_visualization/out/

@@ -21,7 +21,7 @@ import numpy as np
 from dm_control import composer, mjcf
 from dm_control.composer.observation import observable
 from dm_control.mjcf import RootElement
-from mujoco_utils import types, physics_utils
+from mujoco_utils import types
 
 
 @dataclass(frozen=True)
@@ -73,18 +73,11 @@ class Hand(composer.Entity, abc.ABC):
                 range=dof.joint_range,
             )
 
-            joint.damping = physics_utils.get_critical_damping_from_stiffness(
-                dof.stiffness, joint.full_identifier, self.mjcf_model
-            )
-
             self._mjcf_root.actuator.add(
-                "position",
+                "motor",
                 name=dof_name,
                 joint=joint,
-                ctrlrange=dof.joint_range,
-                kp=dof.stiffness,
             )
-
             self._n_forearm_dofs += 1
 
     def apply_action(

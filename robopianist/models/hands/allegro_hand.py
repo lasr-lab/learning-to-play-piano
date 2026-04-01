@@ -18,8 +18,9 @@ from typing import Optional, Sequence, Tuple, Dict
 import numpy as np
 from dm_control import composer, mjcf
 from dm_env import specs
-from mujoco_utils import mjcf_utils, spec_utils, types
+from mujoco_utils import mjcf_utils, types
 
+from robopianist.execution.pd_controller import PDController
 from robopianist.models.hands import allegro_hand_constants as consts
 from robopianist.models.hands import base
 from robopianist.models.hands.base import Dof
@@ -70,7 +71,8 @@ class AllegroHand(base.Hand):
             reduced_action_space: bool = False,
             forearm_dofs: Sequence[str] = ("forearm_tx",),
             xml_file: str = None,
-            excluded_dofs: Tuple[str, ...] = ()
+            excluded_dofs: Tuple[str, ...] = (),
+            physics_timestep: float = 0.005,
     ) -> None:
         """Initializes a AllegroHand.
 
@@ -99,6 +101,7 @@ class AllegroHand(base.Hand):
         self._add_dofs()
 
         self._parse_mjcf_elements(excluded_dofs)
+        self._init_controller(physics_timestep=physics_timestep)
         self._add_mjcf_elements()
 
         if primitive_fingertip_collisions:
@@ -121,11 +124,13 @@ class AllegroHand(base.Hand):
         actuators = mjcf_utils.safe_find_all(self._mjcf_root, "actuator")
         for act_name in excluded_dofs:
             act = [a for a in actuators if a.name == act_name][0]
-            actuators.remove(act)
-            # act.remove()
-
             joint = act.joint
+
+            actuators.remove(act)
             joints.remove(joint)
+
+            act.remove()
+            joint.remove()
 
         self._joints = tuple(joints)
         self._actuators = tuple(actuators)
@@ -138,6 +143,31 @@ class AllegroHand(base.Hand):
         #     thumb_base.quat = "0.031 -0.706 -0.092 -0.701"
         # elif self._hand_side == base.HandSide.LEFT:
         #     thumb_base.quat = "0.031 0.706 -0.092 0.701"
+
+    def _init_controller(self, physics_timestep) -> None:
+        def map_group_to_params_list(param_dict):
+            """
+            Expand a dict mapping joint groups to values into
+            a dict mapping individual joints to values.
+            """
+            joint_map = {}
+            for type, joints in consts.JOINT_TYPES.items():
+                if type not in param_dict:
+                    raise KeyError(f"Missing value for joint type '{type}'")
+                for joint in joints:
+                    joint_map[joint] = param_dict[type]
+
+            return [joint_map[j.name] for j in self.joints]
+
+        self._controller = PDController(
+            time_step=physics_timestep,
+            kp=map_group_to_params_list(consts.KP),
+            kd=map_group_to_params_list(consts.KD),
+            sluggish=map_group_to_params_list(consts.SLUGGISH),
+            max_u=map_group_to_params_list(consts.MAX_U),
+        )
+        for joint, damping in zip(self.joints, map_group_to_params_list(consts.DAMPING)):
+            joint.damping = damping
 
     def _add_mjcf_elements(self) -> None:
         # Add sites to the tips of the fingers.
@@ -224,6 +254,10 @@ class AllegroHand(base.Hand):
     # Accessors.
 
     @property
+    def controller(self) -> PDController:
+        return self._controller
+
+    @property
     def hand_side(self) -> base.HandSide:
         return self._hand_side
 
@@ -278,8 +312,13 @@ class AllegroHand(base.Hand):
 
     def action_spec(self, physics: mjcf.Physics) -> specs.BoundedArray:
         if self._action_spec is None:
-            self._action_spec = spec_utils.create_action_spec(
-                physics=physics, actuators=self.actuators, prefix=self.name
+            ranges = physics.bind(self.joints).range
+            self._action_spec = specs.BoundedArray(
+                shape=(len(self.joints),),
+                dtype=np.float64,
+                minimum=np.array([r[0] for r in ranges], dtype=np.float64),
+                maximum=np.array([r[1] for r in ranges], dtype=np.float64),
+                name=self.name,
             )
 
         return self._action_spec
@@ -291,7 +330,16 @@ class AllegroHand(base.Hand):
             random_state: np.random.RandomState,
     ) -> None:
         del random_state  # Unused.
-        physics.bind(self.actuators).ctrl = action
+        self.controller.set_target_position(action)
+
+    def before_substep(self,
+                       physics: mjcf.Physics,
+                       random_state: np.random.RandomState):
+        del random_state
+        ctrl = self.controller.step(
+            physics.bind(self.joints).qpos
+        )
+        physics.bind(self.actuators).ctrl = ctrl
 
     @property
     def action_labels(self) -> list[str]:

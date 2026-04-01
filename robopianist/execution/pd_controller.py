@@ -1,81 +1,107 @@
+import math
+from typing import Union
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 
 class PDController:
-    def __init__(self, kp: float, kd: float, time_step: float, mass: float = 0.6433644039547359):
+    def __init__(self, time_step: float,
+                 kp: Union[float, list, np.ndarray],
+                 kd: Union[float, list, np.ndarray],
+                 sluggish: Union[float, list, np.ndarray] = 0.0,
+                 max_u: Union[float, list, np.ndarray] = math.inf, ) -> None:
         """
-        Initialize the PD controller with proportional and derivative gains.
+        Initialize the PD controller.
+        :param time_step: Time step in seconds
         :param kp: Proportional gain (Kp)
         :param kd: Derivative gain (Kd)
+        :param sluggish: Real servos need some time until torque is applied. Should be 0 <= x < 1 with 0 -> no sluggishness
+        :param max_u: Maximum control output
         """
-        self.kp = kp
-        self.kd = kd
-        self.mass = mass
-        self.target_position = 0
-        self.target_velocity = 0
-        self.actual_position = 0
-        self.actual_velocity = 0
         self.time_step = time_step
+        self.target_position = None
+        self.last_error = None
+        self.last_u = 0.0
 
-    def _get_force(self) -> float:
-        """
-        Compute the control output (torque/force) based on desired and actual position/velocity.
-        :return: The computed torque/force to apply to the system.
-        """
-        position_error = self.target_position - self.actual_position
-        velocity_error = self.target_velocity - self.actual_velocity
+        self.kp = np.array(kp, dtype=np.float32, ndmin=1)
+        self.kd = np.array(kd, dtype=np.float32, ndmin=1)
+        self.sluggish = np.array(sluggish, dtype=np.float32, ndmin=1)
+        self.max_u = np.array(max_u, dtype=np.float32, ndmin=1)
 
-        torque_p = self.kp * position_error
-        torque_d = self.kd * velocity_error
+    @property
+    def number_of_dofs(self) -> int:
+        if self.kp is None:
+            return 0
+        return self.kp.shape[0]
 
-        return torque_p + torque_d
+    def step(self, current_position: Union[float, np.ndarray]) -> np.ndarray:
+        if self.target_position is None:
+            raise ValueError("Target position not set. Please set it using set_target_position().")
 
-    def step(self) -> float:
-        """
-        Make a physics step according to the initialized timestep.
-        :return: The updated position.
-        """
-        # Compute the control force/torque
-        force = self._get_force()
+        error = self.target_position - current_position
 
-        # F = m * a => a = F / m
-        acceleration = force / self.mass
+        if self.last_error is None:
+            self.last_error = error
 
-        self.actual_velocity += acceleration * self.time_step
-        self.actual_position += self.actual_velocity * self.time_step
-        return self.actual_position
+        derivative_u = self.kd * (error - self.last_error) / self.time_step
+        proportional_u = self.kp * error
+        u = np.clip(derivative_u + proportional_u, -self.max_u, self.max_u)
+        u = (1 - self.sluggish) * u + self.sluggish * self.last_u
+        self.last_u = u
+        self.last_error = error
+        return u
 
-    def set_target_position(self, position: float) -> None:
-        self.target_position = position
+    def set_target_position(self, position: Union[float, np.ndarray]) -> None:
+        self.target_position = np.array(position, dtype=np.float32, ndmin=1)
 
 
 if __name__ == "__main__":
-    time_step = 0.01
-    controller = PDController(kp=2000, kd=71.742, time_step=time_step)
-    controller.set_target_position(1.0)
+    if __name__ == "__main__":
+        # simple open-loop simulation to test PDController behavior
+        controller = PDController(time_step=0.01, kp=8, kd=6.5, max_u=0.2)
+        controller.set_target_position(0.33)
 
-    # Arrays to store the time, position, and velocity for plotting
-    total_time = 1.0
-    num_steps = int(total_time / time_step)
-    time_array = np.linspace(0, total_time, num_steps)
-    position_array = np.zeros(num_steps)
-    velocity_array = np.zeros(num_steps)
+        dt = controller.time_step
+        duration = 10.0
+        t = np.arange(0.0, duration, dt)
 
-    # Simulation loop
-    for i in range(num_steps):
-        position_array[i] = controller.actual_position
-        velocity_array[i] = controller.actual_velocity
-        controller.step()
+        pos = 0.0
+        vel = 0.0
 
-    # Plot the results
-    plt.figure(figsize=(10, 6))
-    plt.plot(time_array, position_array, label='Position')
-    plt.plot(time_array, velocity_array, label='Velocity', linestyle='--')
-    plt.axhline(y=1, color='r', linestyle=':', label='Target Position')
-    plt.title('PD Controller - Position and Velocity over Time')
-    plt.xlabel('Time [s]')
-    plt.ylabel('Position / Velocity')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
+        positions = []
+        controls = []
+        errors = []
+
+        for _ in t:
+            u = controller.step(pos).item()
+            # simple dynamics: unit mass, no friction
+            vel += u * dt
+            pos += vel * dt
+
+            positions.append(pos)
+            controls.append(u)
+            errors.append(controller.target_position - pos)
+
+        print(f"Final position: {pos:.4f}, target: {controller.target_position}")
+
+        plt.figure(figsize=(8, 6))
+        plt.subplot(3, 1, 1)
+        plt.plot(t, positions, label="position")
+        plt.axhline(controller.target_position, color="k", linestyle=":", label="target")
+        plt.ylabel("Position")
+        plt.legend()
+
+        plt.subplot(3, 1, 2)
+        plt.plot(t, errors, label="error", color="tab:orange")
+        plt.ylabel("Error")
+        plt.legend()
+
+        plt.subplot(3, 1, 3)
+        plt.plot(t, controls, label="control (u)", color="tab:green")
+        plt.xlabel("Time [s]")
+        plt.ylabel("Control")
+        plt.legend()
+
+        plt.tight_layout()
+        plt.show()

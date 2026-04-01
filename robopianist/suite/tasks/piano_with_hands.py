@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """A task where two shadow hands must play a given MIDI file on a piano."""
+from math import exp
 from typing import List, Optional, Sequence, Tuple, Dict, Callable
 
 import numpy as np
@@ -23,8 +24,10 @@ from dm_control.mjcf import commit_defaults
 from dm_control.utils.rewards import tolerance
 from dm_env import specs
 from mujoco_utils import collision_utils, spec_utils, mjcf_utils
+from scipy.optimize import linear_sum_assignment
 
-from configs import DRConfig, JointConfig
+from configs import Randomization
+from robopianist.execution.pd_controller import PDController
 from robopianist.models.arenas import stage
 from robopianist.models.arm import robot_arm_constants
 from robopianist.models.arm.robot_arm import RobotArm
@@ -57,7 +60,8 @@ class PianoWithHands(base.PianoTask):
             energy_penalty_coef: float = 0.0,
             action_penalty_coef: float = 0.0,
             sliding_penalty_coef: float = 0.0,
-            randomization_config: DRConfig = None,
+            optimal_transport_coef: float = -1.0,
+            intensity: float = 0.0,
             hand_class: type(Hand) = ShadowHand,
             reward_functions: Sequence[str] = (),
             **kwargs,
@@ -117,7 +121,8 @@ class PianoWithHands(base.PianoTask):
         self._energy_penalty_coef = energy_penalty_coef
         self._action_penalty_coef = action_penalty_coef
         self._sliding_penalty_coef = sliding_penalty_coef
-        self._randomization_config = randomization_config
+        self._optimal_transport_coef = optimal_transport_coef
+        self._randomization_config = Randomization.get_randomization(intensity)
 
         if self._has_fingering_reward and not disable_colorization:
             self._colorize_fingertips(hand_class)
@@ -126,8 +131,9 @@ class PianoWithHands(base.PianoTask):
         self._reset_quantities_at_episode_init()
         self._reset_trajectory()  # Important: call before adding observables.
         self._add_observables()
-        self.last_ctrl = 0
+        self.last_targets = None
         self.basis_dampings = None
+        self._episode = 0
 
     def _set_rewards(self, reward_names: Sequence[str]) -> None:
         available_reward_functions: Dict[str, Callable] = {
@@ -145,7 +151,9 @@ class PianoWithHands(base.PianoTask):
 
             "fingering_reward": self._compute_fingering_reward,
             "forearm_reward": self._compute_forearm_reward,
+            "unwanted_collision_penalty": self._compute_unwanted_collision_penalty,
 
+            "optimal_transport_reward": self._compute_optimal_transport_reward,
         }
         self._selected_rewards = {k: v for k, v in available_reward_functions.items() if k in reward_names}
         self._reward_fn = composite_reward.CompositeReward(**self._selected_rewards)
@@ -197,6 +205,7 @@ class PianoWithHands(base.PianoTask):
             hand.apply_action(physics, actions, random_state)
 
     def notify_episode(self, episode: int):
+        self._episode = episode
         for hand in self.hands:
             hand.notify_episode(episode)
 
@@ -273,26 +282,46 @@ class PianoWithHands(base.PianoTask):
             return 0.0
         return 0.5
 
+    def _compute_unwanted_collision_penalty(self, physics: mjcf.Physics) -> float:
+        """Penalty when the agent uses something else then the fingertips to press keys."""
+        hand_geoms = [g.full_identifier for g in self.hands[0].root_body.find_all("geom")
+                      if g.dclass.dclass.endswith("collision") and not g.dclass.dclass.startswith("fingertip")]
+        piano_geoms = [g.full_identifier for g in self.piano.root_body.find_all("geom")
+                       if "key" in g.full_identifier]
+        if collision_utils.has_collision(
+                physics,
+                hand_geoms,
+                piano_geoms,
+        ):
+            return 0.0
+        return 0.5
+
     def _compute_energy_reward(self, physics: mjcf.Physics) -> float:
         """Reward for minimizing energy."""
         rew = 0.0
         for hand in self.hands:
             power = hand.observables.actuators_power(physics).copy()
             weights = np.ones(power.shape)
-            weights[-1] = 0.003
+            # forearm has super high mass, so we weight it less to avoid large penalties for small movements
+            weights[-1] = 0.1
             rew -= self._energy_penalty_coef * np.average(power, weights=weights)
         return rew
 
     def _compute_action_reward(self, physics: mjcf.Physics) -> float:
-        """Reward for minimizing fast movements."""
-        ctrl = []
+        """Reward for minimizing fast moving targets."""
+        targets = []
         for hand in self.hands:
-            ctrl.extend(physics.bind(hand.actuators).ctrl)
-        ctrl = np.array(ctrl)
+            controller: PDController = hand.controller
+            targets.append(controller.target_position)
+        targets = np.concatenate(targets)
 
-        diff = np.power(ctrl - self.last_ctrl, 2)
+        if self.last_targets is None:
+            self.last_targets = targets
+            return 1
+
+        diff = np.abs(targets - self.last_targets)
         rew = 1 - self._action_penalty_coef * np.sum(diff)
-        self.last_ctrl = ctrl
+        self.last_targets = targets
         return rew
 
     def _compute_sliding_reward(self, physics: mjcf.Physics) -> float:
@@ -426,6 +455,9 @@ class PianoWithHands(base.PianoTask):
         return rew
 
     def _compute_hand_reward(self, physics: mjcf.Physics):
+        if self._episode > 1_000_000:
+            return 0.0
+
         def fast_norm(x):
             return np.sqrt(x.dot(x))
 
@@ -513,6 +545,39 @@ class PianoWithHands(base.PianoTask):
             sigmoid="gaussian",
         )
         return float(np.mean(rews))
+
+    def _compute_optimal_transport_reward(self, physics: mjcf.Physics) -> float:
+        """Reward to minimize distance between fingertips and closest keys."""
+        if not self._goal_current.any():
+            return 1.0
+
+        key_geoms = np.array(self.piano.key_geoms)[self._goal_current.astype(bool)]
+        key_positions = physics.bind(key_geoms).xpos.copy()
+        # Order: (back, right, up)
+        key_positions[:, -1] += 0.5 * physics.bind(key_geoms).size[:, 2]
+        key_positions[:, 0] += 0.35 * physics.bind(key_geoms).size[:, 0]
+
+        sites = [s for s in self.hands[0].fingertip_sites if not s.name.startswith("th")]
+        finger_positions = physics.bind(sites).xpos.copy()
+
+        # Only right left distances
+        finger_pos_y = finger_positions[:, 1]
+        key_pos_y = key_positions[:, 1]
+        finger_cost = np.abs(
+            finger_pos_y[:, np.newaxis] - key_pos_y[np.newaxis, :]
+        )
+
+        # Full cartesian cost
+        cartesian_cost = np.linalg.norm(
+            finger_positions[:, np.newaxis, :] - key_positions[np.newaxis, :, :], axis=-1
+        )
+
+        finger_index, key_index = linear_sum_assignment(finger_cost)
+        assigned_costs = np.sum(cartesian_cost[finger_index, key_index])
+        delta = 0.01
+        if assigned_costs < delta:
+            return 2.0
+        return 2.0 * exp(self._optimal_transport_coef * (assigned_costs - delta))
 
     def _update_goal_state(self) -> None:
         # Observable callables get called after `after_step` but before
@@ -644,49 +709,36 @@ class PianoWithHands(base.PianoTask):
         if offsets is None:
             return
 
-        # Randomize the initial position of the hands.
-        offset = random_state.uniform(low=-offsets.hand_pos_offset, high=offsets.hand_pos_offset)
         for hand in self.hands:
-            physics.bind(hand.joints[-1]).qpos = offset
+            # Randomize the initial position of the hands.
+            if hand.joints[-1].name == "forearm_tx":
+                physics.bind(hand.joints[-1]).qpos = random_state.uniform(
+                    low=-offsets.hand_pos_offset,
+                    high=offsets.hand_pos_offset
+                )
+
+            # Randomize joint gains
+            for act in hand.actuators:
+                physics.bind(act).gainprm[0] = random_state.uniform(
+                    low=(1 - offsets.gain_offset),
+                    high=(1 + offsets.gain_offset)
+                )
 
         # Randomize the initial position of the piano.
         offset = random_state.uniform(low=-offsets.piano_pos_offset, high=offsets.piano_pos_offset)
         self.piano.set_pose(physics, (0, 0, offset))  # (back, right, up)
 
-        # Randomize joints
-        self._apply_joint_randomization(physics, random_state)
-
         # Randomize activation threshold
-        offset = random_state.uniform(low=offsets.activation_offset[0], high=offsets.activation_offset[1])
+        offset = random_state.uniform(low=offsets.activation_offset_range[0], high=offsets.activation_offset_range[1])
         self.piano.set_activation_threshold(offset)
 
         # Randomize spring stiffness
         key_joints = physics.bind(self.piano.joints)
-        offset = [random_state.uniform(low=offsets.key_stiffness[0], high=offsets.key_stiffness[1])] * self.piano.n_keys
+        offset = [random_state.uniform(low=offsets.key_stiffness_range[0],
+                                       high=offsets.key_stiffness_range[1])] * self.piano.n_keys
         key_joints.stiffness = offset
 
         # Friction randomization
-        offset = random_state.uniform(low=offsets.sliding_friction[0], high=offsets.sliding_friction[1])
+        offset = random_state.uniform(low=offsets.sliding_friction_range[0], high=offsets.sliding_friction_range[1])
         for geom in self.piano.key_geoms:
             physics.bind(geom).friction[0] = offset
-
-    def _apply_joint_randomization(
-            self, physics: mjcf.Physics, random_state: np.random.RandomState
-    ) -> None:
-        # Adjust joints
-        damping_offset = self._randomization_config.damping_offset
-        for hand in self.hands:
-            joints: dict = {j.name: j for j in hand.joints}
-            for act in hand.actuators:
-                config: JointConfig = self._randomization_config.hand_configuration[act.name]
-                offset = random_state.uniform(low=config.stiffness * (1 - damping_offset),
-                                              high=config.stiffness * (1 + damping_offset))
-                physics.bind(act).gainprm[0] = offset
-                if act.name == "forearm_tx":
-                    joint_name = act.name
-                else:
-                    joint_name = act.name.replace("a", "j")
-
-                offset = random_state.uniform(low=config.damping * (1 - damping_offset),
-                                              high=config.damping * (1 + damping_offset))
-                physics.bind(joints[joint_name]).damping[0] = offset

@@ -108,6 +108,7 @@ class PianoTask(PianoOnlyTask):
             control_timestep: float = _CONTROL_TIMESTEP,
             use_action_curriculum: bool = False,
             use_both_hands: bool = False,
+            hand_side: HandSide = HandSide.RIGHT,
             piano_type: PianoType = PianoType.M_AUDIO_KEYSTATION_49E,
             excluded_dofs: Tuple[str, ...] = ()
     ) -> None:
@@ -121,20 +122,11 @@ class PianoTask(PianoOnlyTask):
         )
 
         self.hand_class = hand_class
-        self._left_hand = self._add_hand(
-            hand_side=HandSide.LEFT,
-            hand_class=hand_class,
-            gravity_compensation=gravity_compensation,
-            primitive_fingertip_collisions=primitive_fingertip_collisions,
-            reduced_action_space=reduced_action_space,
-            attachment_yaw=attachment_yaw,
-            forearm_dofs=forearm_dofs,
-            use_action_curriculum=use_action_curriculum,
-            centered=not use_both_hands,
-            excluded_dofs=excluded_dofs
-        )
-        self.hands = [self._left_hand]
-        if use_both_hands:
+
+        self.hands = []
+        self._right_hand = None
+        self._left_hand = None
+        if hand_side == HandSide.RIGHT or use_both_hands:
             self._right_hand = self._add_hand(
                 hand_side=HandSide.RIGHT,
                 hand_class=hand_class,
@@ -145,11 +137,26 @@ class PianoTask(PianoOnlyTask):
                 forearm_dofs=forearm_dofs,
                 use_action_curriculum=use_action_curriculum,
                 centered=not use_both_hands,
-                excluded_dofs=excluded_dofs
+                excluded_dofs=excluded_dofs,
+                physics_timestep=physics_timestep
             )
             self.hands.append(self._right_hand)
-        else:
-            self._right_hand = None
+
+        if hand_side == HandSide.LEFT or use_both_hands:
+            self._left_hand = self._add_hand(
+                hand_side=HandSide.LEFT,
+                hand_class=hand_class,
+                gravity_compensation=gravity_compensation,
+                primitive_fingertip_collisions=primitive_fingertip_collisions,
+                reduced_action_space=reduced_action_space,
+                attachment_yaw=attachment_yaw,
+                forearm_dofs=forearm_dofs,
+                use_action_curriculum=use_action_curriculum,
+                centered=not use_both_hands,
+                excluded_dofs=excluded_dofs,
+                physics_timestep=physics_timestep
+            )
+            self.hands.append(self._left_hand)
 
     # Accessors.
     @property
@@ -173,7 +180,8 @@ class PianoTask(PianoOnlyTask):
             forearm_dofs: Sequence[str],
             use_action_curriculum: bool,
             centered: bool,
-            excluded_dofs: Tuple[str, ...] = ()
+            excluded_dofs: Tuple[str, ...] = (),
+            physics_timestep=None,
     ) -> Hand:
 
         if hand_class == ShadowHand:
@@ -181,21 +189,13 @@ class PianoTask(PianoOnlyTask):
                 position = shadow_hand_constants.LEFT_HAND_POSITION
             elif hand_side == HandSide.RIGHT:
                 position = shadow_hand_constants.RIGHT_HAND_POSITION
-            if forearm_dofs:
-                hand = ShadowHand(
-                    side=hand_side,
-                    primitive_fingertip_collisions=primitive_fingertip_collisions,
-                    restrict_wrist_yaw_range=False,
-                    reduced_action_space=reduced_action_space,
-                    forearm_dofs=forearm_dofs
-                )
-            else:
-                hand = ShadowHand(
-                    side=hand_side,
-                    primitive_fingertip_collisions=primitive_fingertip_collisions,
-                    restrict_wrist_yaw_range=False,
-                    reduced_action_space=reduced_action_space
-                )
+            hand = ShadowHand(
+                side=hand_side,
+                primitive_fingertip_collisions=primitive_fingertip_collisions,
+                restrict_wrist_yaw_range=False,
+                reduced_action_space=reduced_action_space,
+                forearm_dofs=forearm_dofs
+            )
             current_quaternion = shadow_hand_constants.QUATERNION
 
         elif hand_class == AllegroHand:
@@ -206,21 +206,14 @@ class PianoTask(PianoOnlyTask):
             if centered:
                 position[1] = 0
 
-            if forearm_dofs:
-                hand = AllegroHand(
-                    side=hand_side,
-                    primitive_fingertip_collisions=primitive_fingertip_collisions,
-                    reduced_action_space=reduced_action_space,
-                    forearm_dofs=forearm_dofs,
-                    excluded_dofs=excluded_dofs
-                )
-            else:
-                hand = AllegroHand(
-                    side=hand_side,
-                    primitive_fingertip_collisions=primitive_fingertip_collisions,
-                    reduced_action_space=reduced_action_space,
-                    excluded_dofs=excluded_dofs
-                )
+            hand = AllegroHand(
+                side=hand_side,
+                primitive_fingertip_collisions=primitive_fingertip_collisions,
+                reduced_action_space=reduced_action_space,
+                forearm_dofs=forearm_dofs,
+                excluded_dofs=excluded_dofs,
+                physics_timestep=physics_timestep
+            )
             current_quaternion = allegro_hand_constants.QUATERNION
 
         elif hand_class == RobotArm:
@@ -247,9 +240,6 @@ class PianoTask(PianoOnlyTask):
             forearm_tx_joint = hand.mjcf_model.find("joint", "forearm_tx")
             if forearm_tx_joint is not None:
                 forearm_tx_joint.range = joint_range
-            forearm_tx_actuator = hand.mjcf_model.find("actuator", "forearm_tx")
-            if forearm_tx_actuator is not None:
-                forearm_tx_actuator.ctrlrange = joint_range
 
             # Slightly rotate the forearms inwards (Z-axis) to mimic human posture.
             rotate_axis = np.asarray([0, 0, 1], dtype=np.float64)

@@ -1,8 +1,5 @@
-from typing import List, Dict
-
 import dm_env
 import numpy as np
-import tree
 from dm_env_wrappers._src.base import EnvironmentWrapper
 
 
@@ -11,51 +8,50 @@ class ObservationStackerWrapper(EnvironmentWrapper):
         Stacks observations over a window.
     """
 
-    def __init__(self, environment: dm_env.Environment, stack_backwards: int) -> None:
+    def __init__(self, environment: dm_env.Environment, observation_names: list[str], stacks: int) -> None:
         super().__init__(environment)
-        observation_spec = environment.observation_spec()
-        self._input_spec = observation_spec
-        self._observation_keys = list(observation_spec.keys())
+        self._stacks = stacks
+        self._observation_names = observation_names
+        assert set(observation_names) - set(environment.observation_spec().keys()) == set(), \
+            f"Some observation names are not in the environment's observation spec. {environment.observation_spec().keys()}"
+        self._reset_buffer()
 
-        dummy_obs = tree.map_structure(lambda x: np.zeros(x.shape, x.dtype), observation_spec)
-        self._init_historical_observations()
+    def _reset_buffer(self):
+        self._observation_buffers = {}
+        for name in self._observation_names:
+            shape = self._environment.observation_spec()[name].shape
+            self._observation_buffers[name] = [np.zeros(shape, dtype=np.float32) for _ in range(self._stacks)]
 
-        dummy_output = self._stack_observation(dummy_obs)
-        self._observation_spec = dm_env.specs.BoundedArray(
-            shape=dummy_output.shape,
-            dtype=dummy_output.dtype,
-            minimum=-np.inf,
-            maximum=np.inf,
-            name="state",
-        )
+    def _stack(self, name: str, obs: np.ndarray) -> dm_env.TimeStep:
+        buffer = self._observation_buffers[name]
+        buffer.pop(0)
+        buffer.append(obs)
+        return np.concatenate(buffer, axis=0)
 
-    def _stack_observation(self, observation):
-        self._historical_observations.append(observation)
-        self._historical_observations.pop(0)
-        print(self._historical_observations)
-
-        out = {k: [] for k in self._observation_keys}
-        for observation in self._historical_observations:
-            for k in self._observation_keys:
-                out[k].extend(observation[k])
-
-        return tree.map_structure(
-            lambda x: np.array(x), out
-        )
+    def _convert_timestep(self, timestep: dm_env.TimeStep):
+        only_stacked = {
+            name: self._stack(name, timestep.observation[name]) for name in self._observation_names
+        }
+        all_observations = {**timestep.observation, **only_stacked}
+        return timestep._replace(observation=all_observations)
 
     def step(self, action) -> dm_env.TimeStep:
         timestep = self._environment.step(action)
-        return timestep._replace(
-            observation=self._stack_observation(timestep.observation)
-        )
-
-    def _init_historical_observations(self):
-        dummy_obs = tree.map_structure(lambda x: np.zeros(x.shape, x.dtype), self._input_spec)
-        self._historical_observations: List[Dict] = [dummy_obs.copy() for _ in self._observation_keys]
+        return self._convert_timestep(timestep)
 
     def reset(self) -> dm_env.TimeStep:
-        self._init_historical_observations()
-        return self._environment.reset()
+        timestep = self._environment.reset()
+        self._reset_buffer()
+        return self._convert_timestep(timestep)
 
     def observation_spec(self):
-        return self._observation_spec
+        spec = self._environment.observation_spec()
+        new_spec = spec.copy()
+        for name in self._observation_names:
+            old_spec = spec[name]
+            new_spec[name] = dm_env.specs.Array(
+                shape=(old_spec.shape[0] * self._stacks,),
+                dtype=old_spec.dtype,
+                name=old_spec.name,
+            )
+        return new_spec

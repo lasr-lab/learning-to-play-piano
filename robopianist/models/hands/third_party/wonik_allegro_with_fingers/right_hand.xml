@@ -12,7 +12,7 @@
       <default class="visual">
         <geom type="mesh" contype="0" conaffinity="0" group="2" material="black"/>
         <default class="palm_visual">
-          <geom mesh="base_link"/>
+          <geom mesh="base_link" mass="1000"/>
         </default>
         <default class="base_visual">
           <geom mesh="link_0.0"/>
@@ -27,10 +27,10 @@
           <geom mesh="link_3.0"/>
         </default>
         <default class="fingertip_visual">
-          <geom pos="0 0 0.0157" material="blue" mesh="human_fingertip"/>
+          <geom type="capsule" size="0.0085 0.016" pos="0 0 0.029" material="gray"/>
         </default>
         <default class="thumbtip_visual">
-          <geom pos="0 0 0.0313" material="blue" mesh="human_fingertip"/>
+          <geom type="capsule" size="0.0085 0.016" pos="0 0 0.045" material="gray"/>
         </default>
       </default>
 
@@ -108,7 +108,7 @@
 
   <asset>
     <material name="black" rgba="0.2 0.2 0.2 1"/>
-    <material name="blue" rgba="0.15 0.15 0.8 1"/>
+    <material name="gray" rgba="0.55 0.55 0.55 1"/>
 
     <mesh file="base_link.stl"/>
     <mesh file="link_0.0.stl"/>

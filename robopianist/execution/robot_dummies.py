@@ -1,38 +1,33 @@
-from third_party.xArmPythonSDK.xarm.wrapper.xarm_api import XArmAPI
-
 from third_party.allegro import Allegro
 
 
 class AllegroDummy(Allegro):
     def __init__(self, hand_topic_prefix="allegroHand_0", num_joints=16):  # noqa
-        pass
+        self.pos = [0.0] * num_joints
 
     def disconnect(self):
         pass
 
     def command_joint_position(self, desired_pose):
-        pass
+        self.pos = desired_pose
 
     def poll_joint_position(self, wait=False):
-        return ((0, 0, 0, 0,  # index
-                 0, 0.41, 1.71, 0.21,  # middle
-                 0, 0, 0, 0,  # ring
-                 0, 0, 0, 0), 42)  # thumb
+        return self.pos, 42
 
 
-class ArmDummy(XArmAPI):
+class ArmDummy:
     def __init__(self, port=None, is_radian=False, do_not_open=False, **kwargs):  # noqa
         pass
 
     def set_mode(self, mode=0, detection_param=0):
-        pass
+        self.mode = mode
 
     def set_state(self, state=0):
-        pass
+        self.state = state
 
     def set_servo_cartesian(self, mvpose, speed=None, mvacc=None, mvtime=0, is_radian=None, is_tool_coord=False,
                             **kwargs):
-        pass
+        self.pos = mvpose
 
     def motion_enable(self, enable=True, servo_id=None):
         pass
@@ -58,4 +53,4 @@ class ArmDummy(XArmAPI):
         pass
 
     def get_position(self, is_radian=None):
-        return [[0] * 10] * 10
+        return (None, self.pos)

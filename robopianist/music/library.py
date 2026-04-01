@@ -97,6 +97,166 @@ def twinkle_twinkle_little_star_one_hand() -> midi_file.MidiFile:
     return midi_file.MidiFile(seq=seq)
 
 
+def are_you_sleeping_one_hand() -> midi_file.MidiFile:
+    """Simple 'Are You Sleeping (Frère Jacques)' melody for the right hand."""
+
+    seq = music_pb2.NoteSequence()
+
+    # Add metadata.
+    seq.sequence_metadata.title = "Are You Sleeping (one hand)"
+    seq.sequence_metadata.artist = "robopianist"
+
+    # Phrase 1: Are you sleep-ing
+    seq.notes.add(pitch=60, start_time=0.0, end_time=1.0, velocity=80)  # C
+    seq.notes.add(pitch=62, start_time=1.0, end_time=2.0, velocity=80)  # D
+    seq.notes.add(pitch=64, start_time=2.0, end_time=3.0, velocity=80)  # E
+    seq.notes.add(pitch=60, start_time=3.0, end_time=4.0, velocity=80)  # C
+
+    # Phrase 2: Are you sleep-ing
+    seq.notes.add(pitch=60, start_time=4.0, end_time=5.0, velocity=80)  # C
+    seq.notes.add(pitch=62, start_time=5.0, end_time=6.0, velocity=80)  # D
+    seq.notes.add(pitch=64, start_time=6.0, end_time=7.0, velocity=80)  # E
+    seq.notes.add(pitch=60, start_time=7.0, end_time=8.0, velocity=80)  # C
+
+    # Phrase 3: Bro-ther John
+    seq.notes.add(pitch=64, start_time=8.0, end_time=9.0, velocity=80)
+    seq.notes.add(pitch=65, start_time=9.0, end_time=10.0, velocity=80)
+    seq.notes.add(pitch=67, start_time=10.0, end_time=12.0, velocity=80)
+
+    # Phrase 4: Bro-ther John
+    seq.notes.add(pitch=64, start_time=12.0, end_time=13.0, velocity=80)  # E
+    seq.notes.add(pitch=65, start_time=13.0, end_time=14.0, velocity=80)  # F
+    seq.notes.add(pitch=67, start_time=14.0, end_time=16.0, velocity=80)  # G
+
+    # Phrase 5: Morn-ing bells are ring-ing
+    seq.notes.add(pitch=67, start_time=16.0, end_time=16.5, velocity=80)  # G
+    seq.notes.add(pitch=69, start_time=16.5, end_time=17.0, velocity=80)  # A
+    seq.notes.add(pitch=67, start_time=17.0, end_time=17.5, velocity=80)  # G
+    seq.notes.add(pitch=65, start_time=17.5, end_time=18.0, velocity=80)  # F
+    seq.notes.add(pitch=64, start_time=18.0, end_time=19.0, velocity=80)  # E
+    seq.notes.add(pitch=60, start_time=19.0, end_time=20.0, velocity=80)  # C
+
+    # Phrase 6: Morn-ing bells are ring-ing
+    seq.notes.add(pitch=67, start_time=20.0, end_time=20.5, velocity=80)  # G
+    seq.notes.add(pitch=69, start_time=20.5, end_time=21.0, velocity=80)  # A
+    seq.notes.add(pitch=67, start_time=21.0, end_time=21.5, velocity=80)  # G
+    seq.notes.add(pitch=65, start_time=21.5, end_time=22.0, velocity=80)  # F
+    seq.notes.add(pitch=64, start_time=22.0, end_time=23.0, velocity=80)  # E
+    seq.notes.add(pitch=60, start_time=23.0, end_time=24.0, velocity=80)  # C
+
+    # Phrase 7: Ding dang dong
+    seq.notes.add(pitch=60, start_time=24.0, end_time=25.0, velocity=80)  # C
+    seq.notes.add(pitch=55, start_time=25.0, end_time=26.0, velocity=80)  # G
+    seq.notes.add(pitch=60, start_time=26.0, end_time=28.0, velocity=80)  # C
+
+    # Phrase 8: Ding dang dong
+    seq.notes.add(pitch=60, start_time=28.0, end_time=29.0, velocity=80)  # C
+    seq.notes.add(pitch=55, start_time=29.0, end_time=30.0, velocity=80)  # G
+    seq.notes.add(pitch=60, start_time=30.0, end_time=32.0, velocity=80)  # C
+
+    seq.total_time = 30.0
+    seq.tempos.add(qpm=60)
+
+    return midi_file.MidiFile(seq=seq)
+
+
+def happy_birthday_one_hand() -> midi_file.MidiFile:
+    """Simple 'Happy Birthday' melody for the right hand."""
+
+    seq = music_pb2.NoteSequence()
+
+    # Add metadata.
+    seq.sequence_metadata.title = "Happy Birthday (one hand)"
+    seq.sequence_metadata.artist = "robopianist"
+
+    # Phrase 1: Hap-py birth-day to you
+    seq.notes.add(pitch=60, start_time=0.0, end_time=0.5, velocity=80)  # C
+    seq.notes.add(pitch=60, start_time=0.5, end_time=1.0, velocity=80)  # C
+    seq.notes.add(pitch=62, start_time=1.0, end_time=2.0, velocity=80)  # D
+    seq.notes.add(pitch=60, start_time=2.0, end_time=3.0, velocity=80)  # C
+    seq.notes.add(pitch=65, start_time=3.0, end_time=4.0, velocity=80)  # F
+    seq.notes.add(pitch=64, start_time=4.0, end_time=6.0, velocity=80)  # E
+
+    # Phrase 2: Hap-py birth-day to you
+    seq.notes.add(pitch=60, start_time=6.0, end_time=6.5, velocity=80)  # C
+    seq.notes.add(pitch=60, start_time=6.5, end_time=7.0, velocity=80)  # C
+    seq.notes.add(pitch=62, start_time=7.0, end_time=8.0, velocity=80)  # D
+    seq.notes.add(pitch=60, start_time=8.0, end_time=9.0, velocity=80)  # C
+    seq.notes.add(pitch=67, start_time=9.0, end_time=10.0, velocity=80)  # G
+    seq.notes.add(pitch=65, start_time=10.0, end_time=12.0, velocity=80)  # F
+
+    # Phrase 3: Hap-py birth-day dear ___
+    seq.notes.add(pitch=60, start_time=12.0, end_time=12.5, velocity=80)  # C
+    seq.notes.add(pitch=60, start_time=12.5, end_time=13.0, velocity=80)  # C
+    seq.notes.add(pitch=72, start_time=13.0, end_time=14.0, velocity=80)  # C (high)
+    seq.notes.add(pitch=69, start_time=14.0, end_time=15.0, velocity=80)  # A
+    seq.notes.add(pitch=65, start_time=15.0, end_time=16.0, velocity=80)  # F
+    seq.notes.add(pitch=64, start_time=16.0, end_time=17.0, velocity=80)  # E
+    seq.notes.add(pitch=62, start_time=17.0, end_time=18.0, velocity=80)  # D
+
+    # Phrase 4: Hap-py birth-day to you
+    seq.notes.add(pitch=70, start_time=18.0, end_time=18.5, velocity=80)  # As
+    seq.notes.add(pitch=70, start_time=18.5, end_time=19.0, velocity=80)  # As
+    seq.notes.add(pitch=69, start_time=19.0, end_time=20.0, velocity=80)  # A
+    seq.notes.add(pitch=65, start_time=20.0, end_time=21.0, velocity=80)  # F
+    seq.notes.add(pitch=67, start_time=21.0, end_time=22.0, velocity=80)  # G
+    seq.notes.add(pitch=65, start_time=22.0, end_time=24.0, velocity=80)  # F
+
+    seq.total_time = 24.0
+    seq.tempos.add(qpm=60)
+
+    return midi_file.MidiFile(seq=seq)
+
+
+def ode_to_joy_one_hand() -> midi_file.MidiFile:
+    """Simple 'Ode to Joy' melody for the right hand."""
+
+    seq = music_pb2.NoteSequence()
+
+    # Add metadata.
+    seq.sequence_metadata.title = "Ode to Joy (one hand)"
+    seq.sequence_metadata.artist = "robopianist"
+
+    # Phrase 1
+    seq.notes.add(pitch=64, start_time=0.0, end_time=1.0, velocity=80)  # E
+    seq.notes.add(pitch=64, start_time=1.0, end_time=2.0, velocity=80)  # E
+    seq.notes.add(pitch=65, start_time=2.0, end_time=3.0, velocity=80)  # F
+    seq.notes.add(pitch=67, start_time=3.0, end_time=4.0, velocity=80)  # G
+    seq.notes.add(pitch=67, start_time=4.0, end_time=5.0, velocity=80)  # G
+    seq.notes.add(pitch=65, start_time=5.0, end_time=6.0, velocity=80)  # F
+    seq.notes.add(pitch=64, start_time=6.0, end_time=7.0, velocity=80)  # E
+    seq.notes.add(pitch=62, start_time=7.0, end_time=8.0, velocity=80)  # D
+    seq.notes.add(pitch=60, start_time=8.0, end_time=9.0, velocity=80)  # C
+    seq.notes.add(pitch=60, start_time=9.0, end_time=10.0, velocity=80)  # C
+    seq.notes.add(pitch=62, start_time=10.0, end_time=11.0, velocity=80)  # D
+    seq.notes.add(pitch=64, start_time=11.0, end_time=12.0, velocity=80)  # E
+    seq.notes.add(pitch=64, start_time=12.0, end_time=13.5, velocity=80)  # E
+    seq.notes.add(pitch=62, start_time=13.5, end_time=14.0, velocity=80)  # D
+    seq.notes.add(pitch=62, start_time=14.0, end_time=16.0, velocity=80)  # D
+
+    # Phrase 2
+    seq.notes.add(pitch=64, start_time=16.0, end_time=17.0, velocity=80)  # E
+    seq.notes.add(pitch=64, start_time=17.0, end_time=18.0, velocity=80)  # E
+    seq.notes.add(pitch=65, start_time=18.0, end_time=19.0, velocity=80)  # F
+    seq.notes.add(pitch=67, start_time=19.0, end_time=20.0, velocity=80)  # G
+    seq.notes.add(pitch=67, start_time=20.0, end_time=21.0, velocity=80)  # G
+    seq.notes.add(pitch=65, start_time=21.0, end_time=22.0, velocity=80)  # F
+    seq.notes.add(pitch=64, start_time=22.0, end_time=23.0, velocity=80)  # E
+    seq.notes.add(pitch=62, start_time=23.0, end_time=24.0, velocity=80)  # D
+    seq.notes.add(pitch=60, start_time=24.0, end_time=25.0, velocity=80)  # C
+    seq.notes.add(pitch=60, start_time=25.0, end_time=26.0, velocity=80)  # C
+    seq.notes.add(pitch=62, start_time=26.0, end_time=27.0, velocity=80)  # D
+    seq.notes.add(pitch=64, start_time=27.0, end_time=28.0, velocity=80)  # E
+    seq.notes.add(pitch=62, start_time=28.0, end_time=29.5, velocity=80)  # D
+    seq.notes.add(pitch=60, start_time=29.5, end_time=30.0, velocity=80)  # C
+    seq.notes.add(pitch=60, start_time=30.0, end_time=32.0, velocity=80)  # C
+
+    seq.total_time = 32.0
+    seq.tempos.add(qpm=60)
+
+    return midi_file.MidiFile(seq=seq)
+
+
 def c_major_scale_one_hand(
         right_octave: int = 5,
         note_duration: float = 0.7,
@@ -583,4 +743,7 @@ MIDI_NAME_TO_CALLABLE: Dict[str, Callable[[], midi_file.MidiFile]] = {
     "CMajorChordProgressionOneHand": c_major_chord_progression_one_hands,
     "TwinkleTwinkleRousseau": twinkle_twinkle_rousseau,
     "NocturneRousseau": nocturne_rousseau,
+    "AreYouSleepingOneHand": are_you_sleeping_one_hand,
+    "HappyBirthdayOneHand": happy_birthday_one_hand,
+    "OdeToJoyOneHand": ode_to_joy_one_hand,
 }

@@ -197,11 +197,12 @@ class PianoConstants:
         # Colors.
         self.WHITE_KEY_COLOR = [0.9, 0.9, 0.9, 1]
         self.BLACK_KEY_COLOR = [0.1, 0.1, 0.1, 1]
+        self.FENCE_COLOR = [0.922, 0.686, 0.349, 1]
         self.BASE_COLOR = [0.15, 0.15, 0.15, 1]
 
     def build_m_audio_keystation(self):
         self.NUM_KEYS = 49
-        self.WHITE_KEY_WIDTH = 0.0225
+        self.WHITE_KEY_WIDTH = 0.022
 
         self.NUM_WHITE_KEYS = 29
         self.WHITE_KEY_INDICES = []
@@ -220,16 +221,18 @@ class PianoConstants:
 
         self.WHITE_KEY_HEIGHT = 0.0225
 
-        self.SPACING_BETWEEN_WHITE_KEYS = 0.674 / 29 - self.WHITE_KEY_WIDTH
         self.N_SPACES_BETWEEN_WHITE_KEYS = self.NUM_WHITE_KEYS - 1
+
+        self.PIANO_LENGTH = 0.6735
+        self.SPACING_BETWEEN_WHITE_KEYS = self.PIANO_LENGTH - self.WHITE_KEY_WIDTH
+        self.SPACING_BETWEEN_WHITE_KEYS /= self.N_SPACES_BETWEEN_WHITE_KEYS
+        self.SPACING_BETWEEN_WHITE_KEYS -= self.WHITE_KEY_WIDTH
+
         self.BLACK_KEY_WIDTH = 0.01
         self.BLACK_KEY_LENGTH = 0.09
         # Unlike the other dimensions, the height of the black key was roughly set such that
         # when a white key is fully depressed, the bottom of the black key is barely visible.
         self.BLACK_KEY_HEIGHT = 0.018
-        self.PIANO_LENGTH = (self.NUM_WHITE_KEYS * self.WHITE_KEY_WIDTH) + (
-                self.N_SPACES_BETWEEN_WHITE_KEYS * self.SPACING_BETWEEN_WHITE_KEYS
-        )
 
         self.WHITE_KEY_X_OFFSET = 0
         self.WHITE_KEY_Z_OFFSET = self.WHITE_KEY_HEIGHT / 2
@@ -278,4 +281,5 @@ class PianoConstants:
         # Colors.
         self.WHITE_KEY_COLOR = [0.95, 0.9, 0.9, 1]
         self.BLACK_KEY_COLOR = [0.1, 0.1, 0.1, 1]
+        self.FENCE_COLOR = [0.922, 0.686, 0.349, 1]
         self.BASE_COLOR = [0.75, 0.75, 0.75, 1]

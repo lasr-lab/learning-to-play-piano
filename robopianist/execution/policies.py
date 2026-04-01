@@ -1,43 +1,46 @@
+import logging
 import os
 import pickle
 import threading
 import tkinter as tk
-from typing import Tuple
+from abc import ABC, abstractmethod
+from typing import Tuple, Union, Optional
 
 import dm_env
 import numpy as np
+import pandas as pd
 import requests
-from dm_env_wrappers._src import canonical_spec
 from flax.serialization import from_bytes
 
-from configs import Defaults
+from robopianist.execution.real_world_environment import RealWorldEnvironment
 from sac import SAC
 
 
-class Policy:
-    def __init__(self, env: dm_env.Environment, **kwargs) -> None:
+class Policy(ABC):
+    @abstractmethod
+    def __init__(self, env: dm_env.Environment, **kwargs):
         pass
 
     def reset(self):
         pass
 
+    @abstractmethod
     def __call__(self, timestep: dm_env.TimeStep) -> np.ndarray:
         raise NotImplementedError
 
 
 class NullPolicy(Policy):
     def __init__(self, env: dm_env.Environment, **kwargs) -> None:
-        super().__init__(env)
         action_spec = env.action_spec()
         self.zeros = np.zeros(action_spec.shape, dtype=action_spec.dtype)
 
-    def __call__(self, timestep: dm_env.TimeStep = None, observations=None) -> np.ndarray:
+    def __call__(self, timestep: dm_env.TimeStep = None) -> np.ndarray:
         return self.zeros
 
 
 class AlternatePolicy(Policy):
-    def __init__(self, env: dm_env.Environment, steps=60, **kwargs) -> None:
-        super().__init__(env)
+    def __init__(self, env: dm_env.Environment, **kwargs) -> None:
+        steps = 60
         self._idx = steps // 2
         mins = env.action_spec().minimum
         maxes = env.action_spec().maximum
@@ -47,21 +50,63 @@ class AlternatePolicy(Policy):
     def reset(self):
         self._idx = 0
 
-    def __call__(self, timestep=None, **kwargs) -> np.ndarray:
+    def __call__(self, timestep) -> np.ndarray:
         action = self._actions[self._idx]
         self._idx += 1
         self._idx %= len(self._actions)
         return action
 
 
+class JumpPolicy(Policy):
+    def __init__(self, env: dm_env.Environment, **kwargs) -> None:
+        steps = 60
+        self.reset()
+        mins = env.action_spec().minimum
+        maxes = env.action_spec().maximum
+        self._actions = [mins] * steps + [maxes] * steps
+
+    def reset(self):
+        self._idx = 30
+
+    def __call__(self, timestep) -> np.ndarray:
+        action = self._actions[self._idx]
+        self._idx += 1
+        self._idx %= len(self._actions)
+        return action
+
+
+class ActionFilePolicy(Policy):
+    def __init__(self, env: dm_env.Environment, path: str, relevant_cols: Optional[list[str]] = None, **kwargs) -> None:
+        df = pd.read_csv(path)
+        if relevant_cols is not None:
+            df = df[relevant_cols]
+        self._actions = df.to_numpy(dtype=np.float32)
+        self._idx = 0
+
+    def reset(self):
+        self._idx = 0
+
+    def __call__(self, timestep) -> np.ndarray:
+        if self._idx >= len(self._actions):
+            logging.warning("ActionFilePolicy: Reached end of action file, repeating last action.")
+            return self._actions[-1]
+
+        action = self._actions[self._idx]
+        self._idx += 1
+        return action
+
+
 class SliderPolicy(Policy):
     def __init__(self, env: dm_env.Environment, **kwargs) -> None:
-        super().__init__(env)
         action_spec = env.action_spec()
         self.actions = np.zeros(action_spec.shape, dtype=action_spec.dtype)
         self.actions_reset = np.zeros(action_spec.shape, dtype=action_spec.dtype)
 
-        self.sliders_thread = threading.Thread(target=self.init_tk, args=(action_spec, env.task.action_labels),
+        if hasattr(env, "task"):
+            names = env.task.action_labels
+        else:
+            names = [""] * len(self.actions)
+        self.sliders_thread = threading.Thread(target=self.init_tk, args=(action_spec, names),
                                                daemon=True)
         self.sliders_thread.start()
 
@@ -81,7 +126,7 @@ class SliderPolicy(Policy):
             tk.Label(master, text=f"{i}: {name}", font=font).grid(column=coll, row=row)
             tk.Scale(master, from_=min, to=max, orient=tk.HORIZONTAL, font=font, resolution=0.01,
                      command=create_callback(i), length=600, width=35, name=f"{i}").grid(column=coll + 1, row=row)
-        i = len(names)
+        i = len(action_space.minimum)
         coll, row = (i % colls) * 2, i // colls
 
         def set():
@@ -97,49 +142,22 @@ class SliderPolicy(Policy):
                                                                        padx=5, pady=5)
         tk.mainloop()
 
-    def __call__(self, timestep: dm_env.TimeStep = None, **kwargs) -> np.ndarray:
-        if "observations" in kwargs.keys():
-            key_list = ["A" if x else "-" for x in kwargs["observations"]["piano/activation"]]
-            print("Pressed: " + "".join(key_list))
+    def __call__(self, timestep: dm_env.TimeStep) -> np.ndarray:
         return self.actions
 
 
 class ModelPolicy(Policy):
-    def __init__(self, env: dm_env.Environment, args: Defaults, **kwargs) -> None:
-        super().__init__(env)
-
-        self.args = args
-        self.action_spec = env.action_spec()
-
-        env_path, model_path = download_model(args.model_url)
+    def __init__(self, env: Union[RealWorldEnvironment, dm_env.Environment], model_url: str, **kwargs) -> None:
+        args = env.args
+        env_path, model_path = download_model(model_url)
         env_spec = pickle.load(open(env_path, "rb"))
         self.model = SAC.initialize(spec=env_spec, config=args.agent_config, seed=args.seed, discount=args.discount)
 
         with open(model_path, "rb") as file:
             self.model = from_bytes(self.model, file.read())
 
-    def __call__(self, timestep: dm_env.TimeStep = None, observations=None, verbose=False) -> np.ndarray:
-        if observations is None:
-            observations = timestep.observation
-
-        goal = observations["goal"]
-        pressed = observations["piano/activation"]
-        hand_joints = observations["lh_allegro_hand/joints_pos"]
-        if verbose:
-            key_list = ["A" if x else "-" for x in pressed]
-            print("Pressed: " + "".join(key_list))
-            key_list = ["A" if x == 1.0 else "-" for x in goal]
-            print("Goal: " + "".join(key_list))
-            print("Joints: ", end="")
-            np.set_printoptions(precision=3, linewidth=32)
-            print(hand_joints)
-            print("\n")
-        observations = np.concatenate([goal, hand_joints, pressed])
-        actions = self.model.eval_actions(observations)
-
-        if self.args.canonicalize:
-            actions = canonical_spec._scale_nested_action(actions, self.action_spec, self.args.clip)
-        return actions
+    def __call__(self, timestep: dm_env.TimeStep) -> np.ndarray:
+        return self.model.eval_actions(timestep.observation)
 
 
 def download_model(model_url: str) -> Tuple[str, str]:
